@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Settings, Shield, Eye, EyeOff, HelpCircle } from 'lucide-react'
+import { Settings, Shield, Eye, EyeOff, HelpCircle, LogOut } from 'lucide-react'
 
 function SettingRow({ label, value, help, children }: { label: string; value?: string; help?: string; children?: React.ReactNode }) {
   const [showHelp, setShowHelp] = useState(false)
@@ -24,7 +24,11 @@ function SettingRow({ label, value, help, children }: { label: string; value?: s
   )
 }
 
-export default function SettingsPage() {
+interface SettingsPageProps {
+  onLogout?: () => void
+}
+
+export default function SettingsPage({ onLogout }: SettingsPageProps) {
   const [advanced, setAdvanced] = useState(false)
   const [gatewayUrl, setGatewayUrl] = useState(localStorage.getItem('gatewayUrl') || 'ws://127.0.0.1:18789')
   const [token, setToken] = useState(localStorage.getItem('gatewayToken') || '')
@@ -120,6 +124,16 @@ export default function SettingsPage() {
         <Shield size={18} />
         Save Settings
       </button>
+
+      {onLogout && (
+        <button
+          onClick={onLogout}
+          className="w-full py-3 bg-red-600 text-white rounded-lg font-semibold flex items-center justify-center gap-2"
+        >
+          <LogOut size={18} />
+          Logout
+        </button>
+      )}
     </div>
   )
 }
