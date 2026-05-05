@@ -1,0 +1,8 @@
+{
+  "appId": "com.neilross.openclaw",
+  "appName": "OpenClaw",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  }
+}

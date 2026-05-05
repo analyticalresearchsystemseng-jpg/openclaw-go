@@ -1,0 +1,33 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-claw-dark text-claw-text antialiased;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    overscroll-behavior-y: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-claw-card rounded-2xl p-4 border border-claw-accent/30;
+  }
+  .btn-primary {
+    @apply bg-claw-highlight text-white font-semibold py-3 px-6 rounded-xl active:scale-95 transition-transform;
+  }
+  .btn-secondary {
+    @apply bg-claw-accent text-claw-text font-semibold py-3 px-6 rounded-xl active:scale-95 transition-transform;
+  }
+  .input {
+    @apply bg-claw-dark border border-claw-accent/50 rounded-xl px-4 py-3 text-claw-text w-full focus:border-claw-highlight focus:outline-none;
+  }
+  .nav-item {
+    @apply flex flex-col items-center gap-1 text-xs text-claw-muted;
+  }
+  .nav-item.active {
+    @apply text-claw-highlight;
+  }
+}
