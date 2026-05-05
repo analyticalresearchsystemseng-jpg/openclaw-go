@@ -1,0 +1,35 @@
+default_platform(:ios)
+
+platform :ios do
+  desc "Build and upload to TestFlight"
+  lane :build do
+    # Increment build number
+    increment_build_number(xcodeproj: "App.xcodeproj")
+    
+    # Build the app
+    build_app(
+      workspace: "App.xcworkspace",
+      scheme: "App",
+      configuration: "Release",
+      export_method: "app-store",
+      output_directory: "./build",
+      output_name: "OpenClawGo.ipa",
+      xcargs: [
+        "DEVELOPMENT_TEAM=#{ENV['ASC_TEAM_ID']}",
+        "PRODUCT_BUNDLE_IDENTIFIER=com.neilross.openclaw"
+      ].join(" ")
+    )
+    
+    # Upload to TestFlight
+    upload_to_testflight(
+      api_key_path: "AuthKey.p8",
+      api_key: {
+        key_id: ENV['ASC_KEY_ID'],
+        issuer_id: ENV['ASC_ISSUER_ID'],
+        key_filepath: "AuthKey.p8"
+      },
+      skip_waiting_for_build_processing: true,
+      notify_external_testers: false
+    )
+  end
+end
