@@ -1,7 +1,7 @@
 import ErrorBoundary from './components/ErrorBoundary'
 
 import { useState } from 'react'
-import { Home, Settings, Sliders, Activity, Wrench, Smartphone, Clock } from 'lucide-react'
+import { Home, Settings, Sliders, Activity, Wrench, Smartphone, Clock, Shield } from 'lucide-react'
 import HomePage from './pages/HomePage'
 import SetupPage from './pages/SetupPage'
 import MonitorPage from './pages/MonitorPage'
@@ -10,7 +10,9 @@ import SettingsPage from './pages/SettingsPage'
 import Sensors from './pages/Sensors'
 import Cron from './pages/Cron'
 
-type Tab = 'home' | 'setup' | 'monitor' | 'troubleshoot' | 'sensors' | 'cron' | 'settings'
+import Admin from './pages/Admin'
+
+type Tab = 'home' | 'setup' | 'monitor' | 'troubleshoot' | 'sensors' | 'cron' | 'admin' | 'settings'
 
 const tabs: { id: Tab; label: string; icon: any }[] = [
   { id: 'home', label: 'Home', icon: Home },
@@ -19,6 +21,7 @@ const tabs: { id: Tab; label: string; icon: any }[] = [
   { id: 'troubleshoot', label: 'Fix', icon: Wrench },
   { id: 'sensors', label: 'Sensors', icon: Smartphone },
   { id: 'cron', label: 'Cron', icon: Clock },
+  { id: 'admin', label: 'Admin', icon: Shield },
   { id: 'settings', label: 'Settings', icon: Settings },
 ]
 
@@ -39,6 +42,7 @@ export default function App() {
         {tab === 'troubleshoot' && <TroubleshootPage />}
         {tab === 'sensors' && <Sensors />}
         {tab === 'cron' && <Cron />}
+        {tab === 'admin' && <Admin />}
         {tab === 'settings' && <SettingsPage />}
       </main>
 
