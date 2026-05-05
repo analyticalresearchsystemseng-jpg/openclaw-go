@@ -1,0 +1,106 @@
+name: iOS Build and Deploy
+
+on:
+  push:
+    branches: [ master, main ]
+  workflow_dispatch:
+    inputs:
+      app_name:
+        description: 'App name'
+        required: true
+        default: 'OpenClaw Go'
+      version:
+        description: 'Version (e.g., 1.0.0)'
+        required: true
+        default: '1.0.0'
+      build_number:
+        description: 'Build number'
+        required: true
+        default: '1'
+      deploy_enabled:
+        description: 'Deploy to TestFlight? (true/false)'
+        required: true
+        default: 'true'
+
+jobs:
+  build-ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Build web assets
+        run: npm run build
+      
+      - name: Sync to iOS
+        run: npx cap sync ios
+      
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2'
+          bundler-cache: true
+      
+      - name: Install Fastlane
+        run: gem install fastlane
+      
+      - name: Install CocoaPods
+        run: |
+          cd ios/App
+          pod install --repo-update || echo "Using SPM instead"
+          cd ../..
+      
+      - name: Decode API Key
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          ASC_TEAM_ID: ${{ secrets.ASC_TEAM_ID }}
+        run: |
+          echo "$ASC_KEY_P8" | base64 -d > ios/AuthKey.p8
+          echo "Setting development team..."
+          sed -i.bak "s/DEVELOPMENT_TEAM = \"\"/DEVELOPMENT_TEAM = \"$ASC_TEAM_ID\"/" ios/App/App.xcodeproj/project.pbxproj || true
+          sed -i.bak "s/PRODUCT_BUNDLE_IDENTIFIER = com.neilross.testapp/PRODUCT_BUNDLE_IDENTIFIER = com.neilross.openclaw/" ios/App/App.xcodeproj/project.pbxproj || true
+          rm ios/App/App.xcodeproj/project.pbxproj.bak 2>/dev/null || true
+          grep "DEVELOPMENT_TEAM" ios/App/App.xcodeproj/project.pbxproj | head -1 || echo "Team ID set in project"
+      
+      - name: Build and Upload to TestFlight
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_TEAM_ID: ${{ secrets.ASC_TEAM_ID }}
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+        run: |
+          cd ios
+          echo "Current directory: $(pwd)"
+          ls -la
+          
+          if [ -f "fastlane/Fastfile" ]; then
+            echo "Using Fastlane..."
+            fastlane build
+          else
+            echo "Building with xcodebuild..."
+            xcodebuild -workspace App/App.xcworkspace \
+              -scheme App \
+              -sdk iphoneos \
+              -configuration Release \
+              -archivePath App.xcarchive \
+              archive \
+              DEVELOPMENT_TEAM="$ASC_TEAM_ID" \
+              PRODUCT_BUNDLE_IDENTIFIER="com.neilross.openclaw"
+            
+            if [ "${{ github.event.inputs.deploy_enabled }}" = "true" ]; then
+              echo "Uploading to TestFlight..."
+              xcrun altool --upload-app \
+                -f App.xcarchive/Products/Applications/App.app \
+                -t ios \
+                --apiKey "$ASC_KEY_ID" \
+                --apiIssuer "$ASC_ISSUER_ID"
+            fi
+          fi
