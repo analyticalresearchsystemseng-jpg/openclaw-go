@@ -62,7 +62,30 @@ export const api = {
   cronEnable: (id: string) => send('cron.enable', { id }),
   cronDisable: (id: string) => send('cron.disable', { id }),
   cronRemove: (id: string) => send('cron.rm', { id }),
-  cronRun: (id: string) => send('cron.run', { id }),
+  // File editing
+  fileRead: (path: string) => send('fs.read', { path }),
+  fileWrite: (path: string, content: string) => send('fs.write', { path, content }),
+  fileEdit: (path: string, oldText: string, newText: string) => send('fs.edit', { path, oldText, newText }),
+  fileList: (path: string) => send('fs.list', { path }),
+  
+  // Chat / Conversation
+  chatList: () => send('chat.list', {}),
+  chatSend: (message: string, channel?: string) => send('chat.send', { message, channel }),
+  chatStream: (callback: (msg: any) => void) => {
+    // Set up streaming listener
+    if (ws) {
+      ws.addEventListener('message', (e) => {
+        const data = JSON.parse(e.data)
+        if (data.type === 'chat' || data.method === 'chat.broadcast') {
+          callback(data)
+        }
+      })
+    }
+    return () => { /* cleanup */ }
+  },
+  
+  // Sensor triggers
+  triggerCron: (cronId: string, sensorData?: any) => send('cron.run', { id: cronId, sensorData }),
 }
 
 export function disconnect() {

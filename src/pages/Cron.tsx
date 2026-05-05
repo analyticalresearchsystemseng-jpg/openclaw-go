@@ -1,226 +1,281 @@
 import { useState, useEffect } from 'react'
-import { Clock, Plus, Trash2, HelpCircle, Play, Pause, Edit3, Save, X, AlertCircle } from 'lucide-react'
-import { api, connect, disconnect } from '../api/gateway'
+import { Clock, Plus, Trash2, Edit3, Save, X, Play, Pause, FileText, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react'
+import { api } from '../api/gateway'
 
 interface CronJob {
   id: string
-  name: string
   schedule: string
-  next?: string
-  last?: string
-  status: string
+  command: string
+  enabled: boolean
+  lastRun?: string
+  nextRun?: string
+  description?: string
+  sensorTrigger?: string
 }
 
-const SCHEDULE_PRESETS = [
-  { label: 'Every 30 min', value: '*/30 * * * *' },
-  { label: 'Every hour', value: '0 * * * *' },
-  { label: 'Daily at 9am', value: '0 9 * * *' },
-  { label: 'Daily at 6pm', value: '0 18 * * *' },
-  { label: 'Weekly (Mon)', value: '0 9 * * 1' },
-  { label: 'Custom', value: 'custom' },
-]
-
-export default function Cron() {
-  const [jobs, setJobs] = useState<CronJob[]>([])
+export default function CronEditor() {
+  const [crons, setCrons] = useState<CronJob[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [editForm, setEditForm] = useState({ name: '', schedule: '' })
+  const [editing, setEditing] = useState<string | null>(null)
+  const [newJob, setNewJob] = useState({ schedule: '', command: '', description: '' })
+  const [showNewForm, setShowNewForm] = useState(false)
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
 
-  // Load jobs on mount
   useEffect(() => {
-    loadJobs()
+    loadCrons()
+    const interval = setInterval(loadCrons, 30000)
+    return () => clearInterval(interval)
   }, [])
 
-  async function loadJobs() {
-    setLoading(true)
-    setError(null)
+  async function loadCrons() {
     try {
       const result = await api.cronList()
-      setJobs(result || [])
+      setCrons(result || [])
     } catch (e: any) {
-      setError(e.message || 'Failed to load cron jobs')
+      setError(e.message)
+    }
+  }
+
+  async function enableCron(id: string) {
+    setLoading(true)
+    try {
+      await api.cronEnable(id)
+      loadCrons()
+    } catch (e: any) {
+      setError(e.message)
     } finally {
       setLoading(false)
     }
   }
 
-  async function toggleJob(id: string, currentStatus: string) {
+  async function disableCron(id: string) {
+    setLoading(true)
     try {
-      if (currentStatus === 'idle' || currentStatus === 'ok') {
-        await api.cronDisable(id)
-      } else {
-        await api.cronEnable(id)
-      }
-      loadJobs() // Refresh
+      await api.cronDisable(id)
+      loadCrons()
     } catch (e: any) {
       setError(e.message)
+    } finally {
+      setLoading(false)
     }
   }
 
-  async function runJobNow(id: string) {
-    try {
-      await api.cronRun(id)
-      setError(null)
-      alert('Job triggered successfully!')
-    } catch (e: any) {
-      setError(e.message)
-    }
-  }
-
-  async function deleteJob(id: string) {
-    if (!confirm('Are you sure you want to delete this job?')) return
+  async function removeCron(id: string) {
+    if (!confirm('Delete this cron job?')) return
+    setLoading(true)
     try {
       await api.cronRemove(id)
-      loadJobs()
+      loadCrons()
     } catch (e: any) {
       setError(e.message)
+    } finally {
+      setLoading(false)
     }
   }
 
-  function startEdit(job: CronJob) {
-    setEditingId(job.id)
-    setEditForm({ name: job.name, schedule: job.schedule })
-  }
-
-  async function saveEdit(id: string) {
+  async function runCron(id: string, sensorData?: any) {
+    setLoading(true)
     try {
-      await api.cronEdit(id, { name: editForm.name, schedule: editForm.schedule })
-      setEditingId(null)
-      loadJobs()
+      await api.triggerCron(id, sensorData)
+      alert('Cron triggered!')
+      loadCrons()
     } catch (e: any) {
       setError(e.message)
+    } finally {
+      setLoading(false)
     }
   }
 
-  function getStatusColor(status: string) {
-    switch (status) {
-      case 'ok': return 'bg-green-500'
-      case 'idle': return 'bg-gray-500'
-      case 'error': return 'bg-red-500'
-      case 'running': return 'bg-yellow-500 animate-pulse'
-      default: return 'bg-gray-400'
+  async function addCron() {
+    if (!newJob.schedule || !newJob.command) {
+      alert('Schedule and command required')
+      return
     }
+    
+    setLoading(true)
+    try {
+      await api.cronEdit('new', {
+        schedule: newJob.schedule,
+        command: newJob.command,
+        description: newJob.description,
+        enabled: true
+      })
+      setNewJob({ schedule: '', command: '', description: '' })
+      setShowNewForm(false)
+      loadCrons()
+    } catch (e: any) {
+      setError(e.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function updateCron(id: string, updates: Partial<CronJob>) {
+    setLoading(true)
+    try {
+      await api.cronEdit(id, updates)
+      setEditing(null)
+      loadCrons()
+    } catch (e: any) {
+      setError(e.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function toggleExpand(id: string) {
+    setExpanded(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
   }
 
   return (
     <div className="p-4 space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold">Cron Jobs</h2>
-        <button onClick={() => alert('Cron jobs run scheduled tasks. Click the play button to run immediately, or toggle to enable/disable.')}
-                className="text-gray-500 hover:text-gray-700">
-          <HelpCircle size={18} />
-        </button>
+        <div className="flex items-center gap-2">
+          <Clock size={24} className="text-claw-primary" />
+          <h2 className="text-xl font-bold">Cron Jobs</h2>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={loadCrons} className="p-2 text-claw-muted">
+            <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
+          </button>
+          <button 
+            onClick={() => setShowNewForm(!showNewForm)}
+            className="p-2 bg-claw-primary text-white rounded-lg"
+          >
+            <Plus size={18} />
+          </button>
+        </div>
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-center gap-2 text-red-700 text-sm">
-          <AlertCircle size={16} />
-          {error}
+        <div className="card bg-red-50 text-red-600 text-sm p-3">{error}</div>
+      )}
+
+      {/* New Job Form */}
+      {showNewForm && (
+        <div className="card space-y-3">
+          <h3 className="font-semibold">New Cron Job</h3>
+          <input
+            placeholder="Schedule (e.g. 0 9 * * 1-5)"
+            value={newJob.schedule}
+            onChange={e => setNewJob({...newJob, schedule: e.target.value})}
+            className="input"
+          />
+          <input
+            placeholder="Command (e.g. curl http://localhost:18789/api/action)"
+            value={newJob.command}
+            onChange={e => setNewJob({...newJob, command: e.target.value})}
+            className="input"
+          />
+          <input
+            placeholder="Description"
+            value={newJob.description}
+            onChange={e => setNewJob({...newJob, description: e.target.value})}
+            className="input"
+          />
+          <div className="flex gap-2">
+            <button onClick={addCron} className="btn-primary flex-1">
+              <Save size={16} /> Add Job
+            </button>
+            <button onClick={() => setShowNewForm(false)} className="btn-secondary">
+              <X size={16} /> Cancel
+            </button>
+          </div>
         </div>
       )}
 
-      <button onClick={loadJobs} disabled={loading}
-              className="w-full py-2 px-4 bg-claw-primary text-white rounded-lg flex items-center justify-center gap-2 disabled:opacity-50">
-        <Clock size={18} className={loading ? 'animate-spin' : ''} />
-        {loading ? 'Loading...' : 'Refresh Jobs'}
-      </button>
-
-      <div className="space-y-3">
-        {jobs.length === 0 && !loading && (
-          <div className="card text-center text-claw-muted py-8">
-            No cron jobs found.
-            <br />
-            <span className="text-xs">Use the CLI to create jobs: openclaw cron add</span>
-          </div>
-        )}
-
-        {jobs.map((job) => (
-          <div key={job.id} className="card space-y-3">
-            {/* Header */}
-            <div className="flex items-start justify-between gap-2">
-              {editingId === job.id ? (
-                <div className="flex-1 space-y-2">
-                  <input
-                    type="text"
-                    value={editForm.name}
-                    onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                    className="w-full px-2 py-1 text-sm border rounded"
-                    placeholder="Job name"
-                  />
-                  <input
-                    type="text"
-                    value={editForm.schedule}
-                    onChange={(e) => setEditForm({ ...editForm, schedule: e.target.value })}
-                    className="w-full px-2 py-1 text-xs font-mono border rounded"
-                    placeholder="0 9 * * *"
-                  />
+      {/* Cron List */}
+      <div className="space-y-2">
+        {crons.map(job => (
+          <div key={job.id} className={`card ${!job.enabled ? 'opacity-60' : ''}`}>
+            {editing === job.id ? (
+              <EditForm 
+                job={job} 
+                onSave={(updates) => updateCron(job.id, updates)}
+                onCancel={() => setEditing(null)}
+              />
+            ) : (
+              <>
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className={`w-2 h-2 rounded-full ${job.enabled ? 'bg-green-500' : 'bg-gray-400'}`} />
+                      <span className="font-semibold text-sm">{job.description || job.id}</span>
+                      {job.sensorTrigger && <span className="text-xs bg-blue-100 text-blue-700 px-1 rounded">📱 Sensor</span>}
+                    </div>
+                    <p className="text-xs font-mono text-claw-muted mt-1">{job.schedule}</p>
+                  </div>
+                  <div className="flex gap-1">
+                    <button onClick={() => runCron(job.id)} className="p-1.5 text-blue-600" title="Run now">
+                      <Play size={16} />
+                    </button>
+                    <button 
+                      onClick={() => job.enabled ? disableCron(job.id) : enableCron(job.id)}
+                      className="p-1.5 text-yellow-600"
+                      title={job.enabled ? 'Disable' : 'Enable'}
+                    >
+                      {job.enabled ? <Pause size={16} /> : <Play size={16} />}
+                    </button>
+                    <button onClick={() => setEditing(job.id)} className="p-1.5 text-claw-muted" title="Edit">
+                      <Edit3 size={16} />
+                    </button>
+                    <button onClick={() => removeCron(job.id)} className="p-1.5 text-red-600" title="Delete">
+                      <Trash2 size={16} />
+                    </button>
+                    <button onClick={() => toggleExpand(job.id)} className="p-1.5 text-claw-muted">
+                      {expanded.has(job.id) ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                    </button>
+                  </div>
                 </div>
-              ) : (
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-semibold text-sm truncate">{job.name}</h3>
-                  <p className="text-xs font-mono text-gray-500 truncate">{job.schedule}</p>
-                </div>
-              )}
 
-              <div className="flex items-center gap-1">
-                <div className={`w-2 h-2 rounded-full ${getStatusColor(job.status)}`} />
-              </div>
-            </div>
-
-            {/* Schedule info */}
-            {!editingId && (
-              <div className="grid grid-cols-2 gap-2 text-xs text-gray-500">
-                <div>
-                  <span className="text-gray-400">Next:</span>
-                  <br />{job.next || 'N/A'}
-                </div>
-                <div>
-                  <span className="text-gray-400">Last:</span>
-                  <br />{job.last || 'Never'}
-                </div>
-              </div>
+                {expanded.has(job.id) && (
+                  <div className="mt-3 pt-3 border-t border-gray-200 space-y-2 text-sm">
+                    <p><span className="text-claw-muted">Command: </span><span className="font-mono text-xs">{job.command}</span></p>
+                    {job.lastRun && <p><span className="text-claw-muted">Last run: </span>{job.lastRun}</p>}
+                    {job.nextRun && <p><span className="text-claw-muted">Next run: </span>{job.nextRun}</p>}
+                  </div>
+                )}
+              </>
             )}
-
-            {/* Actions */}
-            <div className="flex items-center gap-2 pt-2 border-t">
-              {editingId === job.id ? (
-                <>
-                  <button onClick={() => saveEdit(job.id)}
-                          className="flex-1 py-1 px-2 bg-green-600 text-white text-xs rounded flex items-center justify-center gap-1">
-                    <Save size={14} /> Save
-                  </button>
-                  <button onClick={() => setEditingId(null)}
-                          className="flex-1 py-1 px-2 bg-gray-500 text-white text-xs rounded flex items-center justify-center gap-1">
-                    <X size={14} /> Cancel
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button onClick={() => runJobNow(job.id)}
-                          className="flex-1 py-1 px-2 bg-blue-600 text-white text-xs rounded flex items-center justify-center gap-1">
-                    <Play size={14} /> Run Now
-                  </button>
-                  <button onClick={() => startEdit(job)}
-                          className="flex-1 py-1 px-2 bg-purple-600 text-white text-xs rounded flex items-center justify-center gap-1">
-                    <Edit3 size={14} /> Edit
-                  </button>
-                  <button onClick={() => deleteJob(job.id)}
-                          className="py-1 px-2 bg-red-600 text-white text-xs rounded flex items-center justify-center">
-                    <Trash2 size={14} />
-                  </button>
-                </>
-              )}
-            </div>
           </div>
         ))}
-      </div>
 
-      <div className="card bg-gray-50 text-xs text-gray-600">
-        <p className="font-semibold mb-1">Cron Schedule Format:</p>
-        <code className="block font-mono bg-gray-100 p-2 rounded">* * * * *</code>
-        <p className="mt-1">Min Hour Day Month DayOfWeek</p>
-        <p className="text-gray-400">Examples: 0 9 * * * (9am daily), */30 * * * * (every 30min)</p>
+        {crons.length === 0 && !loading && (
+          <div className="card text-center text-claw-muted py-8">
+            No cron jobs configured
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function EditForm({ job, onSave, onCancel }: { job: CronJob; onSave: (u: any) => void; onCancel: () => void }) {
+  const [schedule, setSchedule] = useState(job.schedule)
+  const [command, setCommand] = useState(job.command)
+  const [description, setDescription] = useState(job.description || '')
+
+  return (
+    <div className="space-y-2">
+      <input value={schedule} onChange={e => setSchedule(e.target.value)} className="input" placeholder="Schedule" />
+      <input value={command} onChange={e => setCommand(e.target.value)} className="input" placeholder="Command" />
+      <input value={description} onChange={e => setDescription(e.target.value)} className="input" placeholder="Description" />
+      <div className="flex gap-2">
+        <button 
+          onClick={() => onSave({ schedule, command, description })}
+          className="btn-primary flex-1"
+        >
+          <Save size={16} /> Save
+        </button>
+        <button onClick={onCancel} className="btn-secondary">
+          <X size={16} /> Cancel
+        </button>
       </div>
     </div>
   )

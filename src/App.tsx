@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Home, Settings, Sliders, Activity, Wrench, Smartphone, Clock, Shield, Users, MessageSquare, LogOut, Bell } from 'lucide-react'
+import { Home, Settings, Sliders, Activity, Wrench, Smartphone, Clock, Shield, Users, MessageSquare, LogOut, Bell, FileText, MessageCircle } from 'lucide-react'
 import { Preferences } from '@capacitor/preferences'
 import HomePage from './pages/HomePage'
 import SetupPage from './pages/SetupPage'
@@ -12,10 +12,12 @@ import Admin from './pages/Admin'
 import Sessions from './pages/Sessions'
 import Channels from './pages/Channels'
 import Notifications from './pages/Notifications'
+import Files from './pages/Files'
+import Chat from './pages/Chat'
 import Login from './pages/Login'
 import { disconnect } from './api/gateway'
 
-type Tab = 'home' | 'setup' | 'monitor' | 'troubleshoot' | 'sessions' | 'channels' | 'sensors' | 'cron' | 'admin' | 'notifications' | 'settings'
+type Tab = 'home' | 'setup' | 'monitor' | 'troubleshoot' | 'sessions' | 'channels' | 'sensors' | 'cron' | 'files' | 'chat' | 'admin' | 'notifications' | 'settings'
 
 const tabs: { id: Tab; label: string; icon: any }[] = [
   { id: 'home', label: 'Home', icon: Home },
@@ -26,6 +28,8 @@ const tabs: { id: Tab; label: string; icon: any }[] = [
   { id: 'channels', label: 'Channels', icon: MessageSquare },
   { id: 'sensors', label: 'Sensors', icon: Smartphone },
   { id: 'cron', label: 'Cron', icon: Clock },
+  { id: 'files', label: 'Files', icon: FileText },
+  { id: 'chat', label: 'Chat', icon: MessageCircle },
   { id: 'admin', label: 'Admin', icon: Shield },
   { id: 'notifications', label: 'Alerts', icon: Bell },
   { id: 'settings', label: 'Settings', icon: Settings },
@@ -96,6 +100,8 @@ export default function App() {
         {tab === 'channels' && <Channels />}
         {tab === 'sensors' && <Sensors />}
         {tab === 'cron' && <Cron />}
+        {tab === 'files' && <Files />}
+        {tab === 'chat' && <Chat />}
         {tab === 'admin' && <Admin />}
         {tab === 'notifications' && <Notifications />}
         {tab === 'settings' && <SettingsPage onLogout={handleLogout} />}
