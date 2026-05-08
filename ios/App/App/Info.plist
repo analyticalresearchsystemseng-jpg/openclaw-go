@@ -19,7 +19,7 @@
     <key>CFBundleShortVersionString</key>
     <string>1.0.0</string>
     <key>CFBundleVersion</key>
-    <string>1</string>
+    <string>2</string>
     <key>LSRequiresIPhoneOS</key>
     <true/>
     <key>UILaunchStoryboardName</key>
@@ -53,6 +53,10 @@
     <string>OpenClaw needs your location for background automation features.</string>
     <key>NSLocationAlwaysUsageDescription</key>
     <string>OpenClaw needs your location for background automation features.</string>
+    
+    <!-- Photo Library Permission -->
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>OpenClaw needs photo library access so you can attach images to automation workflows.</string>
     
     <!-- Camera Permission -->
     <key>NSCameraUsageDescription</key>
