@@ -4,23 +4,6 @@ on:
   push:
     branches: [ master, main ]
   workflow_dispatch:
-    inputs:
-      app_name:
-        description: 'App name'
-        required: true
-        default: 'OpenClaw Go'
-      version:
-        description: 'Version (e.g., 1.0.0)'
-        required: true
-        default: '1.0.0'
-      build_number:
-        description: 'Build number'
-        required: true
-        default: '1'
-      deploy_enabled:
-        description: 'Deploy to TestFlight? (true/false)'
-        required: true
-        default: 'true'
 
 jobs:
   build-ios:
@@ -43,64 +26,101 @@ jobs:
       - name: Sync to iOS
         run: npx cap sync ios
       
-      - name: Setup Ruby
-        uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: '3.2'
-          bundler-cache: true
+      - name: Select Xcode 26
+        run: sudo xcode-select -s /Applications/Xcode_26.2.app/Contents/Developer && xcodebuild -version
       
-      - name: Install Fastlane
-        run: gem install fastlane
-      
-      - name: Install CocoaPods
+      - name: Install CocoaPods dependencies
         run: |
           cd ios/App
-          pod install --repo-update || echo "Using SPM instead"
-          cd ../..
+          pod install --repo-update
       
-      - name: Decode API Key
+      - name: Install Apple certificate and provisioning profile
         env:
-          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
-          ASC_TEAM_ID: ${{ secrets.ASC_TEAM_ID }}
+          BUILD_CERTIFICATE_BASE64: ${{ secrets.IOS_DIST_P12 }}
+          P12_PASSWORD: ${{ secrets.IOS_DIST_P12_PASSWORD }}
+          BUILD_PROVISION_PROFILE_BASE64: ${{ secrets.IOS_PROVISION_PROFILE_BASE64 }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
         run: |
-          echo "$ASC_KEY_P8" | base64 -d > ios/AuthKey.p8
-          echo "Setting development team..."
-          sed -i.bak "s/DEVELOPMENT_TEAM = \"\"/DEVELOPMENT_TEAM = \"$ASC_TEAM_ID\"/" ios/App/App.xcodeproj/project.pbxproj || true
-          sed -i.bak "s/PRODUCT_BUNDLE_IDENTIFIER = com.neilross.testapp/PRODUCT_BUNDLE_IDENTIFIER = com.neilross.openclaw/" ios/App/App.xcodeproj/project.pbxproj || true
-          rm ios/App/App.xcodeproj/project.pbxproj.bak 2>/dev/null || true
-          grep "DEVELOPMENT_TEAM" ios/App/App.xcodeproj/project.pbxproj | head -1 || echo "Team ID set in project"
+          CERTIFICATE_PATH=$RUNNER_TEMP/build_certificate.p12
+          PP_PATH=$RUNNER_TEMP/build_pp.mobileprovision
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+
+          echo -n "$BUILD_CERTIFICATE_BASE64" | base64 --decode -o $CERTIFICATE_PATH
+          echo -n "$BUILD_PROVISION_PROFILE_BASE64" | base64 --decode -o $PP_PATH
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+
+          security import $CERTIFICATE_PATH -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security list-keychain -d user -s $KEYCHAIN_PATH
+
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          UUID=$(openssl cms -in $PP_PATH -inform DER -verify -noverify -out /tmp/profile.plist 2>/dev/null && python3 -c "import plistlib; f=open('/tmp/profile.plist','rb'); print(plistlib.load(f)['UUID'])")
+          cp $PP_PATH ~/Library/MobileDevice/Provisioning\ Profiles/$UUID.mobileprovision
+          echo "✅ Certificate and provisioning profile installed (UUID: $UUID)"
       
-      - name: Build and Upload to TestFlight
+      - name: Archive (manual signing)
+        run: |
+          cd ios
+          xcodebuild archive \
+            -scheme App \
+            -workspace App/App.xcworkspace \
+            -destination 'generic/platform=iOS' \
+            -archivePath ./build/App.xcarchive
+      
+      - name: Export IPA
+        run: |
+          cd ios
+          mkdir -p build/export
+          
+          cat > build/exportOptions.plist << 'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>method</key>
+              <string>app-store</string>
+              <key>signingStyle</key>
+              <string>manual</string>
+              <key>teamID</key>
+              <string>M6BWMNZQ57</string>
+              <key>provisioningProfiles</key>
+              <dict>
+                  <key>com.neilross.openclaw</key>
+                  <string>a9585b14-dcef-49e1-ab1b-7afa4e01e6f7</string>
+              </dict>
+          </dict>
+          </plist>
+          PLIST
+          
+          xcodebuild -exportArchive \
+            -archivePath ./build/App.xcarchive \
+            -exportOptionsPlist ./build/exportOptions.plist \
+            -exportPath ./build/export
+          
+          echo "✅ IPA exported to: build/export/App.ipa"
+      
+      - name: Upload to TestFlight
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-          ASC_TEAM_ID: ${{ secrets.ASC_TEAM_ID }}
-          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
         run: |
-          cd ios
-          echo "Current directory: $(pwd)"
-          ls -la
+          echo "=== Uploading IPA to TestFlight ==="
+          mkdir -p ~/.appstoreconnect/private_keys
+          echo "$ASC_KEY_P8" > ~/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8
+          chmod 600 ~/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8
           
-          if [ -f "fastlane/Fastfile" ]; then
-            echo "Using Fastlane..."
-            fastlane build
-          else
-            echo "Building with xcodebuild..."
-            xcodebuild -workspace App/App.xcworkspace \
-              -scheme App \
-              -sdk iphoneos \
-              -configuration Release \
-              -archivePath App.xcarchive \
-              archive \
-              DEVELOPMENT_TEAM="$ASC_TEAM_ID" \
-              PRODUCT_BUNDLE_IDENTIFIER="com.neilross.openclaw"
-            
-            if [ "${{ github.event.inputs.deploy_enabled }}" = "true" ]; then
-              echo "Uploading to TestFlight..."
-              xcrun altool --upload-app \
-                -f App.xcarchive/Products/Applications/App.app \
-                -t ios \
-                --apiKey "$ASC_KEY_ID" \
-                --apiIssuer "$ASC_ISSUER_ID"
-            fi
-          fi
+          xcrun altool --upload-app \
+            --type ios \
+            --file ios/build/export/App.ipa \
+            --apiKey "$ASC_KEY_ID" \
+            --apiIssuer "$ASC_ISSUER_ID"
+          echo "✅ Uploaded to TestFlight"
+      
+      - name: Clean up
+        if: ${{ always() }}
+        run: |
+          security delete-keychain $RUNNER_TEMP/app-signing.keychain-db || true
