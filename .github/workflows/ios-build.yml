@@ -109,13 +109,22 @@ jobs:
           ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
         run: |
           echo "=== Uploading IPA to TestFlight ==="
+          # Find the actual IPA file (xcodebuild may name it differently)
+          IPA_PATH=$(find ios/build/export -name "*.ipa" | head -1)
+          if [ -z "$IPA_PATH" ]; then
+            echo "❌ No IPA file found in ios/build/export/"
+            ls -la ios/build/export/ || true
+            exit 1
+          fi
+          echo "Found IPA: $IPA_PATH"
+          
           mkdir -p ~/.appstoreconnect/private_keys
           echo "$ASC_KEY_P8" > ~/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8
           chmod 600 ~/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8
           
           xcrun altool --upload-app \
             --type ios \
-            --file ios/build/export/App.ipa \
+            --file "$IPA_PATH" \
             --apiKey "$ASC_KEY_ID" \
             --apiIssuer "$ASC_ISSUER_ID"
           echo "✅ Uploaded to TestFlight"
