@@ -22,12 +22,18 @@ export default function Login({ onLogin }: LoginProps) {
       // Convert ws:// to http:// for testing
       const testUrl = url.replace('ws://', 'http://').replace('wss://', 'https://')
       
+      // Manual timeout for older WebKit (AbortSignal.timeout not supported)
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 5000)
+      
       const response = await fetch(`${testUrl}/api/status`, {
         headers: {
           'Authorization': `Bearer ${token}`
         },
-        signal: AbortSignal.timeout(5000)
+        signal: controller.signal
       })
+      
+      clearTimeout(timeoutId)
       
       if (response.ok) {
         setSaved(true)
@@ -42,7 +48,11 @@ export default function Login({ onLogin }: LoginProps) {
         setError(`Server returned ${response.status}`)
       }
     } catch (e: any) {
-      setError(e.message || 'Connection failed. Check URL and token.')
+      if (e.name === 'AbortError') {
+        setError('Connection timed out. Check URL and network.')
+      } else {
+        setError(e.message || 'Connection failed. Check URL and token.')
+      }
     } finally {
       setTesting(false)
     }
